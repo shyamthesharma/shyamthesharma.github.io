@@ -1,1 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yoga Timer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: #0F1210; min-height: 100vh; }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); opacity: .45; }
+      50%       { transform: scale(1.22); opacity: 1; }
+    }
+    @keyframes hint-pulse {
+      0%, 100% { opacity: .5; }
+      50%       { opacity: .9; }
+    }
+    .yt-tab:hover  { opacity: .8; }
+    .yt-ctrl:hover { background: #1F2621 !important; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
 
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const CIRC = 2 * Math.PI * 96;
+    const SESSIONS = 4;
+
+    const MODES = {
+      focus: { color: "#7DAB8A", glow: "rgba(125,171,138,.18)", label: "practice", hint: "breathe & flow",    tab: "Focus"   },
+      short: { color: "#B8A898", glow: "rgba(184,168,152,.18)", label: "rest",     hint: "soften & release", tab: "Rest"    },
+      long:  { color: "#8FA8C2", glow: "rgba(143,168,194,.18)", label: "restore",  hint: "melt & renew",     tab: "Restore" },
+    };
+
+    const D = {
+      page:    "#0F1210",
+      card:    "#181D1A",
+      surface: "#1F2621",
+      border:  "#2C342E",
+      text:    "#D8E8DA",
+      muted:   "#6A7D6C",
+      faint:   "#3A4A3C",
+    };
+
+    const fmt = n => String(n).padStart(2, "0");
+
+    // Inline SVG icons
+    const PlayIcon  = () => <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>;
+    const PauseIcon = () => <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="4" height="16" rx="1"/><rect x="15" y="4" width="4" height="16" rx="1"/></svg>;
+    const RestartIcon = () => (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+        <path d="M3 3v5h5"/>
+      </svg>
+    );
+    const SkipIcon = () => (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="5,4 15,12 5,20" fill="currentColor" stroke="none"/>
+        <line x1="19" y1="5" x2="19" y2="19"/>
+      </svg>
+    );
+
+    function YogaTimer() {
+      const [cfg, setCfg]           = useState({ focus: 25, short: 5, long: 15 });
+      const [mode, setMode]         = useState("focus");
+      const [remaining, setRemaining] = useState(25 * 60);
+      const [total, setTotal]       = useState(25 * 60);
+      const [running, setRunning]   = useState(false);
+      const [completed, setCompleted] = useState(0);
+
+      const r = useRef({ remaining: 25*60, mode: "focus", total: 25*60, completed: 0, cfg: { focus: 25, short: 5, long: 15 } });
+      const iv = useRef(null);
+
+      const stopTimer = () => { clearInterval(iv.current); setRunning(false); };
+
+      const loadMode = (m, newCfg) => {
+        const c = newCfg || r.current.cfg;
+        const secs = c[m] * 60;
+        r.current.mode = m; r.current.remaining = secs; r.current.total = secs;
+        setMode(m); setRemaining(secs); setTotal(secs);
+      };
+
+      const advance = () => {
+        const { mode: m, completed: c } = r.current;
+        let next;
+        if (m === "focus") {
+          const nc = Math.min(c + 1, SESSIONS);
+          r.current.completed = nc; setCompleted(nc);
+          if (nc >= SESSIONS) { r.current.completed = 0; setCompleted(0); next = "long"; }
+          else { next = "short"; }
+        } else { next = "focus"; }
+        loadMode(next);
+      };
+
+      const startTimer = () => {
+        setRunning(true);
+        iv.current = setInterval(() => {
+          const rem = r.current.remaining;
+          if (rem <= 0) { clearInterval(iv.current); setRunning(false); advance(); return; }
+          r.current.remaining = rem - 1; setRemaining(rem - 1);
+        }, 1000);
+      };
+
+      const togglePlay   = () => running ? stopTimer() : (r.current.remaining === 0 ? (loadMode(r.current.mode), startTimer()) : startTimer());
+      const handleMode   = m => { stopTimer(); loadMode(m); };
+      const handleRestart = () => { stopTimer(); loadMode(r.current.mode); };
+      const handleSkip   = () => { stopTimer(); advance(); };
+
+      const handleCfg = (key, val) => {
+        const v = Math.max(1, parseInt(val) || 1);
+        const next = { ...r.current.cfg, [key]: v };
+        r.current.cfg = next; setCfg(next);
+        if (key === r.current.mode) loadMode(r.current.mode, next);
+      };
+
+      useEffect(() => () => clearInterval(iv.current), []);
+
+      const p = MODES[mode];
+      const dashOffset = CIRC * (1 - (total > 0 ? remaining / total : 0));
+      const subLabel = mode === "focus" ? `session ${completed + 1} of ${SESSIONS}` : mode === "short" ? "breath" : "savasana";
+
+      const circleBtn = { border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%", transition: "all .2s" };
+
+      return (
+        <div style={{ minHeight: "100vh", background: D.page, display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem", fontFamily: "system-ui, sans-serif" }}>
+          <div style={{
+            background: D.card, border: `1px solid ${D.border}`, borderRadius: 32,
+            padding: "2.5rem 2rem 2rem", display: "flex", flexDirection: "column",
+            alignItems: "center", gap: "1.4rem", width: 320,
+            boxShadow: `0 0 0 1px ${p.color}14, 0 32px 64px rgba(0,0,0,.6), 0 0 80px ${p.glow}`,
+            transition: "box-shadow .5s",
+          }}>
+
+            {/* intent */}
+            <p style={{ fontSize: 10, letterSpacing: ".25em", textTransform: "uppercase", color: D.muted, margin: 0 }}>
+              {p.label}
+            </p>
+
+            {/* mode tabs */}
+            <div style={{ display: "flex", gap: 6, background: D.surface, borderRadius: 999, padding: 4 }}>
+              {Object.entries(MODES).map(([key, m]) => (
+                <button key={key} className="yt-tab" onClick={() => handleMode(key)} style={{
+                  background: mode === key ? p.color : "transparent",
+                  border: "none", borderRadius: 999, padding: "5px 16px",
+                  fontSize: 12, letterSpacing: ".04em",
+                  color: mode === key ? "#0F1210" : D.muted,
+                  cursor: "pointer", fontWeight: mode === key ? 600 : 400,
+                  transition: "all .2s",
+                }}>{m.tab}</button>
+              ))}
+            </div>
+
+            {/* ring */}
+            <div style={{ position: "relative", width: 210, height: 210 }}>
+              <svg viewBox="0 0 210 210" width="210" height="210"
+                style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
+                <circle cx="105" cy="105" r="103" fill="none" stroke={D.faint} strokeWidth=".5"/>
+                <circle cx="105" cy="105" r="96"  fill="none" stroke={D.surface} strokeWidth="6"/>
+                <circle cx="105" cy="105" r="96"  fill="none"
+                  stroke={p.color} strokeWidth="6" strokeLinecap="round"
+                  strokeDasharray={CIRC} strokeDashoffset={dashOffset}
+                  style={{ transition: "stroke-dashoffset .8s cubic-bezier(.4,0,.2,1), stroke .4s" }}
+                />
+                <circle cx="105" cy="105" r="82"  fill="none" stroke={D.faint} strokeWidth=".5"/>
+              </svg>
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <div style={{
+                  fontSize: 22, color: p.color, lineHeight: 1,
+                  opacity: running ? 1 : .25, transition: "opacity .4s",
+                  animation: running ? "breathe 4s ease-in-out infinite" : "none",
+                }}>✿</div>
+                <div style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 52, fontWeight: 300, letterSpacing: -2, color: D.text, lineHeight: 1 }}>
+                  {fmt(Math.floor(remaining / 60))}:{fmt(remaining % 60)}
+                </div>
+                <div style={{ fontSize: 10, letterSpacing: ".16em", textTransform: "uppercase", color: D.muted }}>
+                  {subLabel}
+                </div>
+              </div>
+            </div>
+
+            {/* hint */}
+            <p style={{
+              fontSize: 12, letterSpacing: ".1em", color: p.color, margin: 0, minHeight: 18,
+              opacity: running ? .7 : 0, transition: "opacity .5s",
+              animation: running ? "hint-pulse 6s ease-in-out infinite" : "none",
+            }}>{p.hint}</p>
+
+            {/* controls */}
+            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+              <button className="yt-ctrl" onClick={handleRestart} title="Restart" aria-label="Restart"
+                style={{ ...circleBtn, width: 44, height: 44, background: D.surface, color: D.muted }}>
+                <RestartIcon/>
+              </button>
+
+              <button onClick={togglePlay} aria-label={running ? "Pause" : "Play"}
+                style={{ ...circleBtn, width: 68, height: 68, background: p.color, color: D.page,
+                  boxShadow: `0 0 0 6px ${p.color}20, 0 0 24px ${p.glow}` }}>
+                {running ? <PauseIcon/> : <PlayIcon/>}
+              </button>
+
+              <button className="yt-ctrl" onClick={handleSkip} title="Skip" aria-label="Skip"
+                style={{ ...circleBtn, width: 44, height: 44, background: D.surface, color: D.muted }}>
+                <SkipIcon/>
+              </button>
+            </div>
+
+            {/* session dots */}
+            <div style={{ display: "flex", gap: 10 }}>
+              {Array.from({ length: SESSIONS }, (_, i) => (
+                <div key={i} style={{
+                  width: 7, height: 7, borderRadius: "50%",
+                  background: i < completed ? p.color : D.faint,
+                  transform: i < completed ? "scale(1.3)" : "scale(1)",
+                  transition: "all .3s",
+                }}/>
+              ))}
+            </div>
+
+            <div style={{ width: "100%", height: 1, background: D.border }}/>
+
+            {/* duration settings */}
+            <div style={{ display: "flex", gap: 14, fontSize: 11, color: D.muted, alignItems: "center" }}>
+              {[["focus","Focus"],["short","Rest"],["long","Restore"]].map(([key, label]) => (
+                <label key={key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  {label}
+                  <input type="number" value={cfg[key]} min={1} max={99}
+                    onChange={e => handleCfg(key, e.target.value)}
+                    style={{ width: 40, border: `1px solid ${D.border}`, borderRadius: 6, padding: "3px 4px", fontSize: 11, background: D.surface, color: D.text, textAlign: "center", outline: "none" }}
+                  />
+                </label>
+              ))}
+            </div>
+
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<YogaTimer/>);
+  </script>
+</body>
+</html>
